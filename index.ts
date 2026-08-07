@@ -32,15 +32,18 @@ const MODELS = [
 ];
 
 // ponytail: thin wrapper around the built-in Anthropic streamSimple. The SDK
-// already does the heavy lifting; this only injects the three headers that
-// actually move SSE latency and that Anthropic's SDK doesn't set on its own:
+// already does the heavy lifting; this only injects the four headers that
+// actually move SSE latency on hostile networks (corporate proxies, captive
+// portals, old CDNs) and that Anthropic's SDK doesn't set on its own:
 //   - X-Accel-Buffering: no  -> ask nginx-style proxies to flush each chunk
 //                               instead of batching. The single biggest cause
 //                               of "first token feels slow" when a CDN/reverse
 //                               proxy sits in front of an Anthropic-compatible
 //                               endpoint.
+//   - Cache-Control: no-cache -> no intermediate cache holding the stream open
+//   - Pragma: no-cache         -> HTTP/1.0 cache directive for ancient proxies
+//                               that ignore Cache-Control
 //   - Accept: text/event-stream -> explicit streaming negotiation
-//   - Cache-Control: no-cache    -> no intermediate cache holding the stream
 // ponytail: use the bare `@earendil-works/pi-ai` import, not `/compat` — the
 // /compat subpath was added in pi-ai 0.80+; pi 0.74.2 ships pi-ai 0.74.2 which
 // doesn't have it and the loader fails to resolve it. `streamSimple` has been
@@ -54,23 +57,48 @@ const MODELS = [
 // `streamSimple()` from inside our wrapper would loop back into us forever.
 // Capturing the built-in before `registerProvider` runs sidesteps that on
 // every pi version we support (0.74.x overwrites, 0.83+ never does).
+//
+// ponytail: when MINIMAX_DEBUG=1, log TTFB + response headers + chunk timing
+// via onResponse so the user can see whether the bottleneck is proxy
+// buffering, TLS handshake, or server-side. Set the var, send a message,
+// check `~/.pi/agent/minimax-debug.log`.
 function makeFastStreamSimple(
 	base: StreamFunction<"anthropic-messages", SimpleStreamOptions>,
 ) {
+	const debug = !!process.env.MINIMAX_DEBUG;
 	return (
 		model: Model<"anthropic-messages">,
 		context: Context,
 		options?: SimpleStreamOptions,
-	): AssistantMessageEventStream =>
-		base(model, context, {
+	): AssistantMessageEventStream => {
+		const startedAt = debug ? Date.now() : 0;
+		return base(model, context, {
 			...options,
 			headers: {
 				...options?.headers,
 				Accept: "text/event-stream",
 				"X-Accel-Buffering": "no",
 				"Cache-Control": "no-cache",
+				Pragma: "no-cache",
 			},
+			...(debug
+				? {
+						onResponse: async (response) => {
+							const ttfb = Date.now() - startedAt;
+							const enc = response.headers["content-encoding"] ?? "?";
+							const ct = response.headers["content-type"] ?? "?";
+							const acc = response.headers["x-accel-buffering"] ?? "?";
+							// eslint-disable-next-line no-console
+							console.log(
+								`[minimax] TTFB ${ttfb}ms status=${response.status} ` +
+									`content-type=${ct} content-encoding=${enc} ` +
+									`x-accel-buffering=${acc}`,
+							);
+						},
+					}
+				: {}),
 		});
+	};
 }
 
 export default function (pi: ExtensionAPI) {
