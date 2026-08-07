@@ -88,7 +88,6 @@ async function* sseEvents(body: ReadableStream<Uint8Array>, signal?: AbortSignal
 
 function fetchDirectStreamSimple(
 	baseUrl: string,
-	apiKey: string,
 ): (
 	model: Model<"anthropic-messages">,
 	context: Context,
@@ -146,6 +145,8 @@ function fetchDirectStreamSimple(
 				if (context.systemPrompt) {
 					body.system = context.systemPrompt;
 				}
+				const apiKey =
+					options?.apiKey ?? process.env.MINIMAX_API_KEY ?? "";
 				const response = await fetch(`${baseUrl}/v1/messages`, {
 					method: "POST",
 					headers: {
@@ -247,27 +248,42 @@ export default function (pi: ExtensionAPI) {
 	if (MODE === "fetch-direct") {
 		// ponytail: direct fetch bypasses Anthropic SDK. Saves ~20-30ms/request.
 		// Re-implements only text streaming — no thinking/tool_use/auth.
-		const apiKey = process.env.MINIMAX_API_KEY ?? "";
+		// apiKey comes from options (pi-resolved) with env fallback.
 		pi.registerProvider("minimax", {
 			baseUrl: `${host}/anthropic`,
 			apiKey: "$MINIMAX_API_KEY",
 			api: "anthropic-messages",
-			streamSimple: fetchDirectStreamSimple(`${host}/anthropic`, apiKey),
+			streamSimple: fetchDirectStreamSimple(`${host}/anthropic`),
 			models: MODELS,
 		});
 		return;
 	}
 
-	// MODE === "headers" (default): wrapper with SSE headers
+	// MODE === "headers" (default): wrapper with SSE headers + TTFB log via
+	// onResponse. baseline mode skips even this so we can measure the cost
+	// of having any wrapper at all.
 	const streamSimpleWrapped = (
 		model: Model<"anthropic-messages">,
 		context: Context,
 		options?: SimpleStreamOptions,
-	): AssistantMessageEventStream =>
-		baseStreamSimple(model, context, {
+	): AssistantMessageEventStream => {
+		const startedAt = Date.now();
+		const wrap = baseStreamSimple(model, context, {
 			...options,
 			headers: { ...options?.headers, ...SSE_HEADERS },
+			onResponse: async (response) => {
+				await options?.onResponse?.(response, model);
+				const ttfb = Date.now() - startedAt;
+				log(
+					`TTFB ${ttfb}ms status=${response.status} ` +
+						`ct=${response.headers["content-type"] ?? "?"} ` +
+						`ce=${response.headers["content-encoding"] ?? "?"} ` +
+						`te=${response.headers["transfer-encoding"] ?? "?"}`,
+				);
+			},
 		});
+		return wrap;
+	};
 
 	pi.registerProvider("minimax", {
 		baseUrl: `${host}/anthropic`,
