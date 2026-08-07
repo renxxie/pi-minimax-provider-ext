@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
+import { streamSimple } from "@earendil-works/pi-ai";
 import type {
 	AssistantMessageEventStream,
 	Context,
@@ -40,14 +40,16 @@ const MODELS = [
 //                               endpoint.
 //   - Accept: text/event-stream -> explicit streaming negotiation
 //   - Cache-Control: no-cache    -> no intermediate cache holding the stream
-const baseStreamSimple = anthropicMessagesApi().streamSimple;
-
+// ponytail: use the bare `@earendil-works/pi-ai` import, not `/compat` — the
+// /compat subpath was added in pi-ai 0.80+; pi 0.74.2 ships pi-ai 0.74.2 which
+// doesn't have it and the loader fails to resolve it. `streamSimple` has been
+// exported from the package root since 0.74.x and still is in 0.83+.
 function fastStreamSimple(
 	model: Model<"anthropic-messages">,
 	context: Context,
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
-	return baseStreamSimple(model, context, {
+	return streamSimple(model, context, {
 		...options,
 		headers: {
 			...options?.headers,
