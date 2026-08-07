@@ -1,6 +1,6 @@
 # pi-minimax-provider
 
-Pi extension: MiniMax AI models (M3, M2.7, M2.5, M2.1, M2) via Anthropic-compatible endpoint.
+Pi extension: MiniMax AI models via the Anthropic-compatible endpoint at `api.minimax.io`.
 
 No build, no npm install needed. Drop into extensions folder.
 
@@ -31,18 +31,20 @@ MINIMAX_API_HOST=https://proxy.example.com pi
 
 ## Models
 
-| Model | Context | Output |
-|-------|--------:|-------:|
-| MiniMax-M3 | 1,000,000 | 524,288 |
-| MiniMax-M2.7 | 204,800 | 65,536 |
-| MiniMax-M2.7-highspeed | 204,800 | 65,536 |
-| MiniMax-M2.5 | 204,800 | 65,536 |
-| MiniMax-M2.5-highspeed | 204,800 | 65,536 |
-| MiniMax-M2.1 | 204,800 | 65,536 |
-| MiniMax-M2.1-highspeed | 204,800 | 65,536 |
-| MiniMax-M2 | 204,800 | 65,536 |
+| Model | Context | Output | Input |
+|-------|--------:|-------:|-------|
+| MiniMax-M3 | 1,000,000 | 524,288 | text + image |
+| MiniMax-M2.7 | 204,800 | 65,536 | text |
 
 Use: `/model MiniMax-M3`
+
+## SSE
+
+The streaming wrapper sends three headers that the Anthropic SDK doesn't set on its own:
+
+- `Accept: text/event-stream` — explicit streaming negotiation
+- `X-Accel-Buffering: no` — tells nginx-style proxies to flush each chunk instead of batching (the single biggest cause of "first token feels slow" when a CDN/reverse proxy sits in front of the upstream)
+- `Cache-Control: no-cache` — no intermediate cache holding the stream open
 
 ## License
 
