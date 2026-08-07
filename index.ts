@@ -65,27 +65,45 @@ const MODELS = [
 // buffering, TLS handshake, or server-side. Set the var, send a message,
 // check `~/.pi/agent/minimax-debug.log`. We write to a file because pi's TUI
 // captures stdout, so console.log from extensions never reaches the user.
+// ponytail: ALWAYS write a startup marker (one line) on extension load so we
+// can tell whether the extension ran at all. TTFB logging still gates on
+// MINIMAX_DEBUG so normal usage stays quiet.
+const DEBUG_LOG = process.env.MINIMAX_DEBUG
+	? join(process.env.HOME ?? "/tmp", ".pi", "agent", "minimax-debug.log")
+	: "";
+if (DEBUG_LOG) {
+	try {
+		mkdirSync(join(process.env.HOME ?? "/tmp", ".pi", "agent"), {
+			recursive: true,
+		});
+		appendFileSync(
+			DEBUG_LOG,
+			`${new Date().toISOString()} extension loaded pid=${process.pid} cwd=${process.cwd()} MINIMAX_DEBUG=${process.env.MINIMAX_DEBUG}\n`,
+		);
+	} catch {
+		// never let debug logging break the extension load
+	}
+}
+function logDebug(line: string): void {
+	if (!DEBUG_LOG) return;
+	try {
+		appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${line}\n`);
+	} catch {
+		// never let debug logging break the stream
+	}
+}
 function makeFastStreamSimple(
 	base: StreamFunction<"anthropic-messages", SimpleStreamOptions>,
-	cwd: string,
 ) {
-	const debug = !!process.env.MINIMAX_DEBUG;
-	const logFile = debug ? join(cwd, ".pi", "agent", "minimax-debug.log") : "";
-	if (debug) mkdirSync(join(cwd, ".pi", "agent"), { recursive: true });
-	const log = (line: string) => {
-		try {
-			appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
-		} catch {
-			// never let debug logging break the stream
-		}
-	};
 	return (
 		model: Model<"anthropic-messages">,
 		context: Context,
 		options?: SimpleStreamOptions,
 	): AssistantMessageEventStream => {
-		const startedAt = debug ? Date.now() : 0;
-		if (debug) log(`request start model=${model.id} baseUrl=${model.baseUrl}`);
+		const startedAt = Date.now();
+		logDebug(
+			`request start model=${model.id} baseUrl=${model.baseUrl} msg#=${context.messages.length}`,
+		);
 		return base(model, context, {
 			...options,
 			headers: {
@@ -95,20 +113,18 @@ function makeFastStreamSimple(
 				"Cache-Control": "no-cache",
 				Pragma: "no-cache",
 			},
-			...(debug
-				? {
-						onResponse: async (response) => {
-							const ttfb = Date.now() - startedAt;
-							const enc = response.headers["content-encoding"] ?? "?";
-							const ct = response.headers["content-type"] ?? "?";
-							const te = response.headers["transfer-encoding"] ?? "?";
-							log(
-								`TTFB ${ttfb}ms status=${response.status} ` +
-									`ct=${ct} ce=${enc} te=${te}`,
-							);
-						},
-					}
-				: {}),
+			onResponse: async (response) => {
+				await options?.onResponse?.(response, model);
+				if (!DEBUG_LOG) return;
+				const ttfb = Date.now() - startedAt;
+				const enc = response.headers["content-encoding"] ?? "?";
+				const ct = response.headers["content-type"] ?? "?";
+				const te = response.headers["transfer-encoding"] ?? "?";
+				logDebug(
+					`TTFB ${ttfb}ms status=${response.status} ` +
+						`ct=${ct} ce=${enc} te=${te}`,
+				);
+			},
 		});
 	};
 }
@@ -127,7 +143,6 @@ export default function (pi: ExtensionAPI) {
 		api: "anthropic-messages",
 		streamSimple: makeFastStreamSimple(
 			baseStreamSimple as StreamFunction<"anthropic-messages", SimpleStreamOptions>,
-			process.cwd(),
 		),
 		models: MODELS,
 	});
