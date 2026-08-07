@@ -99,9 +99,10 @@ function makeFastStreamSimple(
 			headers: {
 				...options?.headers,
 				Accept: "text/event-stream",
-				"X-Accel-Buffering": "no",
-				"Cache-Control": "no-cache",
+				"Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
 				Pragma: "no-cache",
+				"X-Accel-Buffering": "no",
+				"Surrogate-Control": "no-store",
 			},
 			onResponse: async (response) => {
 				await options?.onResponse?.(response, model);
