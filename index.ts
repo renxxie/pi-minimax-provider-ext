@@ -7,6 +7,8 @@ import type {
 	SimpleStreamOptions,
 	StreamFunction,
 } from "@earendil-works/pi-ai";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 const DEFAULT_API_HOST = "https://api.minimax.io";
 
@@ -61,17 +63,29 @@ const MODELS = [
 // ponytail: when MINIMAX_DEBUG=1, log TTFB + response headers + chunk timing
 // via onResponse so the user can see whether the bottleneck is proxy
 // buffering, TLS handshake, or server-side. Set the var, send a message,
-// check `~/.pi/agent/minimax-debug.log`.
+// check `~/.pi/agent/minimax-debug.log`. We write to a file because pi's TUI
+// captures stdout, so console.log from extensions never reaches the user.
 function makeFastStreamSimple(
 	base: StreamFunction<"anthropic-messages", SimpleStreamOptions>,
+	cwd: string,
 ) {
 	const debug = !!process.env.MINIMAX_DEBUG;
+	const logFile = debug ? join(cwd, ".pi", "agent", "minimax-debug.log") : "";
+	if (debug) mkdirSync(join(cwd, ".pi", "agent"), { recursive: true });
+	const log = (line: string) => {
+		try {
+			appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
+		} catch {
+			// never let debug logging break the stream
+		}
+	};
 	return (
 		model: Model<"anthropic-messages">,
 		context: Context,
 		options?: SimpleStreamOptions,
 	): AssistantMessageEventStream => {
 		const startedAt = debug ? Date.now() : 0;
+		if (debug) log(`request start model=${model.id} baseUrl=${model.baseUrl}`);
 		return base(model, context, {
 			...options,
 			headers: {
@@ -87,12 +101,10 @@ function makeFastStreamSimple(
 							const ttfb = Date.now() - startedAt;
 							const enc = response.headers["content-encoding"] ?? "?";
 							const ct = response.headers["content-type"] ?? "?";
-							const acc = response.headers["x-accel-buffering"] ?? "?";
-							// eslint-disable-next-line no-console
-							console.log(
-								`[minimax] TTFB ${ttfb}ms status=${response.status} ` +
-									`content-type=${ct} content-encoding=${enc} ` +
-									`x-accel-buffering=${acc}`,
+							const te = response.headers["transfer-encoding"] ?? "?";
+							log(
+								`TTFB ${ttfb}ms status=${response.status} ` +
+									`ct=${ct} ce=${enc} te=${te}`,
 							);
 						},
 					}
@@ -115,6 +127,7 @@ export default function (pi: ExtensionAPI) {
 		api: "anthropic-messages",
 		streamSimple: makeFastStreamSimple(
 			baseStreamSimple as StreamFunction<"anthropic-messages", SimpleStreamOptions>,
+			process.cwd(),
 		),
 		models: MODELS,
 	});
