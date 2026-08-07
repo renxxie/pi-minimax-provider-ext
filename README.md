@@ -40,7 +40,7 @@ Use: `/model MiniMax-M3`
 
 ## Streaming
 
-Uses direct `fetch` (bypasses the Anthropic SDK, ~5ms faster first byte) with five SSE-friendly headers that the upstream might or might not honor depending on what's in front of `api.minimax.io`:
+Uses direct `fetch` (bypasses the Anthropic SDK, ~5ms faster first byte) with five SSE-friendly headers:
 
 - `Accept: text/event-stream` — explicit streaming negotiation
 - `Cache-Control: no-cache, no-store, must-revalidate, max-age=0` — no intermediate cache
@@ -104,7 +104,7 @@ The shipped code combines only what's reachable from extension code. Net savings
 |---|---:|---:|---:|
 | localhost, 50ms TTFB | 58ms | 54ms | **-4ms** |
 | localhost, 200ms TTFB | 208ms | 203ms | **-5ms** |
-| corporate proxy, 14s TTFB | ~14000ms | ~13995ms | -0.04% |
+| 14s TTFB (slow upstream) | ~14000ms | ~13995ms | -0.04% |
 
 ### Discussion
 
@@ -116,17 +116,16 @@ The user-facing latency has three components:
 
 For (3), this plugin does roughly the minimum useful work: one `fetch`, one SSE parser, one event per chunk. The Anthropic SDK adds a client constructor, beta-header logic, JSON-schema validation, OAuth detection, retry policy, telemetry — none of which matters for a single request. Removing it gets ~5ms.
 
-For (2) on a corporate network with TLS inspection, every request costs ~10s of proxy work. Headers that say "don't buffer" don't help — the proxy decrypts before those headers are visible. No client-side change moves this number.
+For (2) on a slow upstream, every request costs seconds of round-trip work. Headers that say "don't buffer" don't help a proxy that decrypts before those headers are visible. No client-side change moves this number.
 
 ### Conclusion
 
-Client-side optimization is **exhausted** for this scenario. The remaining ~99.9% of latency is on the wire and inside the proxy. To actually feel faster on a corporate network, one of these has to happen:
+Client-side optimization is **exhausted** for this scenario. The remaining ~99.9% of latency is on the wire. To actually feel faster on slow upstream networks, one of these has to happen:
 
-1. **Allowlist** `api.minimax.io` in corporate SSL-inspection / proxy bypass list (ask IT)
-2. **Hotspot / VPN** that bypasses the corporate proxy entirely
-3. **Different region**: `MINIMAX_API_HOST=https://api.minimaxi.com` if you're closer to Mainland China
+1. **Network-side optimization** — allowlist in upstream proxies / reduce inspection
+2. **Different region** — `MINIMAX_API_HOST=https://api.minimaxi.com` if you're closer to Mainland China
 
-On a direct connection (no proxy), the savings from this plugin are visible — ~5ms shaved off every first byte, plus all nginx/CDN buffering bypass scenarios are covered by the headers.
+On a fast connection (low TTFB), the savings from this plugin are visible — ~5ms shaved off every first byte, plus all nginx/CDN buffering bypass scenarios are covered by the headers.
 
 ## License
 

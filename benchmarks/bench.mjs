@@ -1,5 +1,3 @@
-// Compare 5 streamSimple variants against mock server with token pacing.
-// Measures: TTFB, time-to-first-token, inter-token latency, total time.
 import {
 	AssistantMessageEventStream,
 	getApiProvider,

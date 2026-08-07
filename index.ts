@@ -1,8 +1,3 @@
-// Pi extension: MiniMax AI models via Anthropic-compatible endpoint.
-// Uses direct fetch (bypasses Anthropic SDK, ~5ms faster) with SSE-headers
-// to bypass nginx/CDN response buffering. Custom undici Agent would save
-// another ~3ms but the import isn't available from extensions.
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type {
@@ -43,8 +38,10 @@ const MODELS = [
 	},
 ];
 
-// Minimal SSE parser: yields each `data: ...` payload as a string.
-async function* sseEvents(body: ReadableStream<Uint8Array>, signal?: AbortSignal) {
+async function* sseEvents(
+	body: ReadableStream<Uint8Array>,
+	signal?: AbortSignal,
+): AsyncGenerator<string> {
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	let buf = "";
@@ -137,11 +134,7 @@ function streamSimple(
 				const evt = JSON.parse(data) as {
 					type: string;
 					message?: { usage?: { input_tokens?: number } };
-					delta?: {
-						type?: string;
-						text?: string;
-						stop_reason?: string;
-					};
+					delta?: { type?: string; text?: string; stop_reason?: string };
 					usage?: { output_tokens?: number };
 				};
 				if (evt.type === "message_start") {
@@ -149,11 +142,12 @@ function streamSimple(
 				} else if (evt.type === "content_block_delta") {
 					if (evt.delta?.type === "text_delta") {
 						const block = output.content[0] as { type: "text"; text: string };
-						block.text += evt.delta.text ?? "";
+						const text = evt.delta.text ?? "";
+						block.text += text;
 						stream.push({
 							type: "text_delta",
 							contentIndex: 0,
-							delta: evt.delta.text ?? "",
+							delta: text,
 							partial: output,
 						});
 					}

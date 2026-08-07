@@ -1,7 +1,3 @@
-// Mock SSE server with realistic token pacing.
-// MOCK_CHUNK_INTERVAL_MS controls delay between text_delta events
-// (default 30ms, mimics a real model streaming ~33 tokens/sec).
-// MOCK_DELAY_MS controls first-byte delay (default 50ms).
 import { createServer } from "node:http";
 
 const DELAY_MS = parseInt(process.env.MOCK_DELAY_MS ?? "50", 10);

@@ -1,4 +1,3 @@
-// Test: does a custom undici Agent with different keepAliveTimeout help?
 import { Agent, fetch as undiciFetch } from "/opt/local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/undici/index.js";
 import {
 	AssistantMessageEventStream,
