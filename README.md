@@ -7,15 +7,15 @@ No build, no npm install needed. Drop into extensions folder.
 ## Install
 
 ```bash
-git clone https://github.com/renxxie/pi-minimax-provider
-cp -r pi-minimax-provider ~/.pi/agent/extensions/
+git clone https://github.com/renxxie/pi-minimax-provider-ext
+cp -r pi-minimax-provider-ext ~/.pi/agent/extensions/
 ```
 
 Then in pi: `/reload`.
 
 Or symlink for live updates:
 ```bash
-ln -s "$(pwd)/pi-minimax-provider" ~/.pi/agent/extensions/minimax
+ln -s "$(pwd)/pi-minimax-provider-ext" ~/.pi/agent/extensions/minimax
 ```
 
 ## Auth
@@ -34,7 +34,6 @@ MINIMAX_API_HOST=https://proxy.example.com pi
 | Model | Context | Output | Input |
 |-------|--------:|-------:|-------|
 | MiniMax-M3 | 1,000,000 | 524,288 | text + image |
-| MiniMax-M2.7 | 204,800 | 65,536 | text |
 
 Use: `/model MiniMax-M3`
 
