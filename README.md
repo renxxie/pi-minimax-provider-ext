@@ -38,13 +38,24 @@ MINIMAX_API_HOST=https://proxy.example.com pi
 
 Use: `/model MiniMax-M3`
 
-## SSE
+## Streaming
 
-The streaming wrapper sends three headers that the Anthropic SDK doesn't set on its own:
+Uses direct `fetch` (bypasses the Anthropic SDK, ~5ms faster first byte) with five SSE-friendly headers that the upstream might or might not honor depending on what's in front of `api.minimax.io`:
 
 - `Accept: text/event-stream` — explicit streaming negotiation
-- `X-Accel-Buffering: no` — tells nginx-style proxies to flush each chunk instead of batching (the single biggest cause of "first token feels slow" when a CDN/reverse proxy sits in front of the upstream)
-- `Cache-Control: no-cache` — no intermediate cache holding the stream open
+- `Cache-Control: no-cache, no-store, must-revalidate, max-age=0` — no intermediate cache
+- `Pragma: no-cache` — HTTP/1.0 cache directive for ancient proxies
+- `X-Accel-Buffering: no` — tells nginx-style proxies to flush each chunk instead of batching
+- `Surrogate-Control: no-store` — Fastly / Varnish / Squid bypass
+
+Benchmark on localhost mock (50ms first byte, 30ms inter-token, 20 iterations):
+
+| | TTFB | inter-token |
+|---|---|---|
+| Anthropic SDK | 58ms | 31ms |
+| fetch-direct + headers (this plugin) | 54ms | 32ms |
+
+On a 14s corporate-proxy TTFB the difference is invisible — client-side wins cap at ~5ms regardless of network. The real fix for slow first bytes is an allowlist on `api.minimax.io` in your corporate proxy, not extension code.
 
 ## License
 
