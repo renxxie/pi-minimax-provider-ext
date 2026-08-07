@@ -1,4 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
+import type {
+	AssistantMessageEventStream,
+	Context,
+	Model,
+	SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 
 const DEFAULT_API_HOST = "https://api.minimax.io";
 
@@ -77,6 +84,34 @@ const MODELS = [
 	},
 ];
 
+// ponytail: thin wrapper around the built-in Anthropic streamSimple. The SDK
+// already does the heavy lifting; this only injects the three headers that
+// actually move SSE latency and that Anthropic's SDK doesn't set on its own:
+//   - X-Accel-Buffering: no  -> ask nginx-style proxies to flush each chunk
+//                               instead of batching. The single biggest cause
+//                               of "first token feels slow" when a CDN/reverse
+//                               proxy sits in front of an Anthropic-compatible
+//                               endpoint.
+//   - Accept: text/event-stream -> explicit streaming negotiation
+//   - Cache-Control: no-cache    -> no intermediate cache holding the stream
+const baseStreamSimple = anthropicMessagesApi().streamSimple;
+
+function fastStreamSimple(
+	model: Model<"anthropic-messages">,
+	context: Context,
+	options?: SimpleStreamOptions,
+): AssistantMessageEventStream {
+	return baseStreamSimple(model, context, {
+		...options,
+		headers: {
+			...options?.headers,
+			Accept: "text/event-stream",
+			"X-Accel-Buffering": "no",
+			"Cache-Control": "no-cache",
+		},
+	});
+}
+
 export default function (pi: ExtensionAPI) {
 	const host = (process.env.MINIMAX_API_HOST || DEFAULT_API_HOST).replace(/\/$/, "");
 
@@ -84,6 +119,7 @@ export default function (pi: ExtensionAPI) {
 		baseUrl: `${host}/anthropic`,
 		apiKey: "$MINIMAX_API_KEY",
 		api: "anthropic-messages",
+		streamSimple: fastStreamSimple,
 		models: MODELS,
 	});
 }
