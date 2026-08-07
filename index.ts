@@ -60,32 +60,22 @@ const MODELS = [
 // Capturing the built-in before `registerProvider` runs sidesteps that on
 // every pi version we support (0.74.x overwrites, 0.83+ never does).
 //
-// ponytail: when MINIMAX_DEBUG=1, log TTFB + response headers + chunk timing
-// via onResponse so the user can see whether the bottleneck is proxy
-// buffering, TLS handshake, or server-side. Set the var, send a message,
-// check `~/.pi/agent/minimax-debug.log`. We write to a file because pi's TUI
-// captures stdout, so console.log from extensions never reaches the user.
-// ponytail: ALWAYS write a startup marker (one line) on extension load so we
-// can tell whether the extension ran at all. TTFB logging still gates on
-// MINIMAX_DEBUG so normal usage stays quiet.
-const DEBUG_LOG = process.env.MINIMAX_DEBUG
-	? join(process.env.HOME ?? "/tmp", ".pi", "agent", "minimax-debug.log")
-	: "";
-if (DEBUG_LOG) {
-	try {
-		mkdirSync(join(process.env.HOME ?? "/tmp", ".pi", "agent"), {
-			recursive: true,
-		});
-		appendFileSync(
-			DEBUG_LOG,
-			`${new Date().toISOString()} extension loaded pid=${process.pid} cwd=${process.cwd()} MINIMAX_DEBUG=${process.env.MINIMAX_DEBUG}\n`,
-		);
-	} catch {
-		// never let debug logging break the extension load
-	}
+// ponytail: log TTFB + response headers to ~/.pi/agent/minimax-debug.log on
+// every request. pi's TUI captures stdout, so console.log from extensions
+// never reaches the user. The log is tiny (one line per request) and lives
+// outside the TUI, so it doesn't interfere with normal usage. Delete the
+// file when you're done diagnosing.
+const DEBUG_LOG = join(process.env.HOME ?? "/tmp", ".pi", "agent", "minimax-debug.log");
+try {
+	mkdirSync(join(process.env.HOME ?? "/tmp", ".pi", "agent"), { recursive: true });
+	appendFileSync(
+		DEBUG_LOG,
+		`${new Date().toISOString()} extension loaded pid=${process.pid} cwd=${process.cwd()}\n`,
+	);
+} catch {
+	// never let debug logging break the extension load
 }
 function logDebug(line: string): void {
-	if (!DEBUG_LOG) return;
 	try {
 		appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${line}\n`);
 	} catch {
@@ -115,7 +105,6 @@ function makeFastStreamSimple(
 			},
 			onResponse: async (response) => {
 				await options?.onResponse?.(response, model);
-				if (!DEBUG_LOG) return;
 				const ttfb = Date.now() - startedAt;
 				const enc = response.headers["content-encoding"] ?? "?";
 				const ct = response.headers["content-type"] ?? "?";
